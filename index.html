@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Waiter">
+<title>Waiter Notebook</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1b;--mut:#6b6b66;--line:#e2e0d8;--acc:#c2410c;--accink:#fff;--ok:#15803d;--bad:#b91c1c;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161614;--card:#222220;--ink:#f1f0ea;--mut:#a3a29a;--line:#363632;--acc:#fb923c;--accink:#1a1a18;--ok:#4ade80;--bad:#f87171;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#161614;--card:#222220;--ink:#f1f0ea;--mut:#a3a29a;--line:#363632;--acc:#fb923c;--accink:#1a1a18;--ok:#4ade80;--bad:#f87171;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:12px 12px 60px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:12px 14px;min-height:46px}
+button.pri{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
+button.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);font-weight:600}
+button.bad{color:var(--bad)}
+input,textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.row{display:flex;gap:8px;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+h2{font-size:18px;margin:0}
+.mut{color:var(--mut);font-size:14px}
+.res{display:flex;width:100%;text-align:left;gap:12px;align-items:center;margin-top:8px}
+.code{font-size:26px;font-weight:700;color:var(--acc);min-width:72px;font-variant-numeric:tabular-nums}
+.name{flex:1}
+.item{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.qty{display:flex;align-items:center;gap:6px}
+.qty button{padding:0;width:40px;min-height:40px}
+.qty b{min-width:22px;text-align:center}
+textarea{min-height:110px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+var S={menu:[],tables:[],active:null,tab:'tables',adding:false,arm:null,q:'',mq:'',note:''};
+try{var d=JSON.parse(localStorage.getItem('wn')||'{}');if(d.menu)S.menu=d.menu;if(d.tables)S.tables=d.tables;S.active=d.active||null}catch(e){}
+function save(){try{localStorage.setItem('wn',JSON.stringify({menu:S.menu,tables:S.tables,active:S.active}))}catch(e){}}
+var $=function(s){return document.querySelector(s)};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
+function tbl(){return S.tables.find(function(t){return t.id===S.active})}
+function armed(k){if(S.arm===k){S.arm=null;return true}S.arm=k;render();return false}
+
+function results(){
+  var q=S.q.trim().toLowerCase();if(!q)return'';
+  var m=S.menu.filter(function(x){return String(x.code).indexOf(q)===0||x.name.toLowerCase().indexOf(q)>-1}).slice(0,8);
+  var h=m.map(function(x){return'<button class="res" data-act="add" data-code="'+esc(x.code)+'" data-name="'+esc(x.name)+'"><span class="code">'+esc(x.code)+'</span><span class="name">'+esc(x.name)+'</span></button>'}).join('');
+  if(!m.length)h+='<p class="mut">Nothing in the menu for “'+esc(S.q)+'”.</p>';
+  h+='<button class="res" data-act="addc"><span class="code">+</span><span class="name">Add “'+esc(S.q.trim())+'” as a custom item</span></button>';
+  return h;
+}
+
+function render(){
+  var h='<div class="tabs"><button data-act="tab" data-v="tables" class="'+(S.tab==='tables'?'on':'')+'">Tables</button><button data-act="tab" data-v="menu" class="'+(S.tab==='menu'?'on':'')+'">Menu ('+S.menu.length+')</button></div>';
+  if(S.tab==='tables'){
+    h+='<div class="chips">'+S.tables.map(function(t){var n=t.items.reduce(function(a,i){return a+i.qty},0);return'<button data-act="sel" data-id="'+t.id+'" class="'+(t.id===S.active?'on':'')+'">'+esc(t.name)+(n?' · '+n:'')+'</button>'}).join('')+'<button class="pri" data-act="new">+ New table</button></div>';
+    if(S.adding)h+='<div class="card row"><input id="nn" placeholder="Table name or number" maxlength="20"><button class="pri" data-act="create">Create</button></div>';
+    var t=tbl();
+    if(t){
+      h+='<div class="card"><div class="row"><h2 style="flex:1">Table '+esc(t.name)+'</h2><button class="bad" data-act="deltable">'+(S.arm==='T'+t.id?'Sure? Tap again':'Delete table')+'</button></div></div>';
+      h+='<div class="card"><input id="q" placeholder="Type a name or number…" value="'+esc(S.q)+'" autocomplete="off"><div id="res">'+results()+'</div></div>';
+      h+='<div class="card">'+(t.items.length?t.items.map(function(i,k){return'<div class="item"><span class="code">'+(i.code||'—')+'</span><span class="name">'+esc(i.name||'')+'</span><span class="qty"><button data-act="dec" data-i="'+k+'">−</button><b>'+i.qty+'</b><button data-act="inc" data-i="'+k+'">+</button></span><button class="bad" data-act="rm" data-i="'+k+'">✕</button></div>'}).join(''):'<p class="mut">No items yet. Search above to add one.</p>')+'</div>';
+    }else if(!S.adding){h+='<p class="mut">Tap “New table” when guests sit down.</p>'}
+  }else{
+    h+='<div class="card"><h2>Add item</h2><div class="row" style="margin-top:8px"><input id="mc" inputmode="numeric" placeholder="Number" style="width:100px"><input id="mn" placeholder="Name"></div><button class="pri" data-act="madd" style="width:100%;margin-top:8px">Save to menu</button><p class="mut">Same number again replaces the name.</p></div>';
+    h+='<div class="card"><h2>Import a list</h2><p class="mut">One item per line, like “599 Pizza Margarita” or “Pizza Margarita - 599”.</p><textarea id="imp" placeholder="599 Pizza Margarita&#10;120 Coca-Cola"></textarea><button class="pri" data-act="import" style="width:100%;margin-top:8px">Import</button>'+(S.note?'<p class="mut">'+esc(S.note)+'</p>':'')+'</div>';
+    var f=S.mq.trim().toLowerCase();
+    var L=S.menu.filter(function(x){return!f||String(x.code).indexOf(f)===0||x.name.toLowerCase().indexOf(f)>-1});
+    h+='<div class="card"><input id="mq" placeholder="Filter menu…" value="'+esc(S.mq)+'"><div id="mlist">'+mlist(L)+'</div></div>';
+    h+='<div class="card"><h2>Backup</h2><p class="mut">Copy this text somewhere safe. Paste it back and tap Restore to recover everything.</p><textarea id="bk"></textarea><div class="row" style="margin-top:8px"><button data-act="export" style="flex:1">Show backup</button><button data-act="restore" style="flex:1">Restore</button></div></div>';
+  }
+  var keep=document.activeElement&&document.activeElement.id;
+  $('#app').innerHTML=h;
+  if(keep&&$('#'+keep)&&/^(q|mq)$/.test(keep)){var e=$('#'+keep);e.focus();e.setSelectionRange(e.value.length,e.value.length)}
+}
+function mlist(L){return L.length?L.map(function(x){return'<div class="item"><span class="code">'+esc(x.code)+'</span><span class="name">'+esc(x.name)+'</span><button class="bad" data-act="mdel" data-code="'+esc(x.code)+'">'+(S.arm==='M'+x.code?'Sure?':'✕')+'</button></div>'}).join(''):'<p class="mut">The menu is empty. Add items above or import a list.</p>'}
+
+function addItem(code,name){
+  var t=tbl();if(!t)return;
+  var f=t.items.find(function(i){return i.code===code&&i.name===name});
+  if(f)f.qty++;else t.items.push({code:code,name:name,qty:1});
+  S.q='';save();render();var q=$('#q');if(q)q.focus();
+}
+function parse(txt){
+  var out=[];txt.split(/\n/).forEach(function(l){
+    l=l.trim();if(!l)return;
+    var m=l.match(/^(\d+)\s*[-–:;,.\t ]\s*(.+)$/),c,n;
+    if(m){c=m[1];n=m[2]}else{m=l.match(/^(.+?)\s*[-–:;,\t ]\s*(\d+)$/);if(m){n=m[1];c=m[2]}}
+    if(c&&n)out.push({code:c,name:n.trim()});
+  });return out;
+}
+function setMenu(code,name){var f=S.menu.find(function(x){return x.code===code});if(f)f.name=name;else S.menu.push({code:code,name:name});S.menu.sort(function(a,b){return a.name.localeCompare(b.name)})}
+
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-act]');if(!b)return;
+  var a=b.dataset.act,d=b.dataset,t=tbl();
+  if(a!=='deltable'&&a!=='mdel')S.arm=null;
+  if(a==='tab'){S.tab=d.v;S.note=''}
+  else if(a==='new'){S.adding=true;render();var n=$('#nn');if(n)n.focus();return}
+  else if(a==='create'){var v=$('#nn').value.trim();if(!v)return;var id=uid();S.tables.push({id:id,name:v,items:[]});S.active=id;S.adding=false;S.q=''}
+  else if(a==='sel'){S.active=d.id;S.q=''}
+  else if(a==='deltable'){if(!armed('T'+t.id))return;S.tables=S.tables.filter(function(x){return x.id!==t.id});S.active=S.tables.length?S.tables[S.tables.length-1].id:null}
+  else if(a==='add'){addItem(d.code,d.name);return}
+  else if(a==='addc'){var s=S.q.trim();if(!s)return;/^\d+$/.test(s)?addItem(s,''):addItem('',s);return}
+  else if(a==='inc'){t.items[d.i].qty++}
+  else if(a==='dec'){if(--t.items[d.i].qty<1)t.items.splice(d.i,1)}
+  else if(a==='rm'){t.items.splice(d.i,1)}
+  else if(a==='madd'){var c=$('#mc').value.trim(),n=$('#mn').value.trim();if(!/^\d+$/.test(c)||!n)return;setMenu(c,n)}
+  else if(a==='mdel'){if(!armed('M'+d.code))return;S.menu=S.menu.filter(function(x){return x.code!==d.code})}
+  else if(a==='import'){var p=parse($('#imp').value);p.forEach(function(x){setMenu(x.code,x.name)});S.note=p.length+' item(s) imported.'}
+  else if(a==='export'){$('#bk').value=JSON.stringify({menu:S.menu,tables:S.tables});return}
+  else if(a==='restore'){try{var o=JSON.parse($('#bk').value);if(!Array.isArray(o.menu))throw 0;S.menu=o.menu;S.tables=o.tables||[];S.active=null;S.note='Restored.'}catch(x){S.note='That backup text is not valid.';render();return}}
+  save();render();
+});
+document.addEventListener('input',function(e){
+  if(e.target.id==='q'){S.q=e.target.value;$('#res').innerHTML=results()}
+  else if(e.target.id==='mq'){S.mq=e.target.value;var f=S.mq.trim().toLowerCase();$('#mlist').innerHTML=mlist(S.menu.filter(function(x){return!f||String(x.code).indexOf(f)===0||x.name.toLowerCase().indexOf(f)>-1}))}
+});
+document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.id==='nn')document.querySelector('[data-act="create"]').click()});
+render();
+</script>
+</body>
+</html>
